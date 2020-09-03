@@ -1,28 +1,11 @@
 const OVERRIDE_OPT = 'WARN' // options: ALLOW, WARN, FORBID
-const SEND_TO_SLACK = false // options: true or false
-const WARN_IF_NO_CHECK_OUT = false // options: true or false
-const CHECK_IN_CHANNEL = "#lab-check-in-log" //change this to what your desired channel is called
-const url = "https://hooks.slack.com/services/XXXX/XXX"; //put your webhook url here
+const SEND_TO_SLACK = true // options: true or false
+const WARN_IF_NO_CHECK_OUT = true // options: true or false
+const CHECK_IN_CHANNEL = "#check-in-log" //change this to what your desired channel is called
+const url = "https://hooks.slack.com/services/xx"; //put your webhook url here
 
-const BLUE = "blue"
-const RED = "red"
-const YELLOW = "yellow"
-const GREEN = "green"
-var stations = [BLUE.toLowerCase(), RED.toLowerCase(), YELLOW.toLowerCase(), GREEN.toLowerCase()]
-const NUM_SHIFTS = 3
 
-const BLUE_COL = 2
-const RED_COL = 5
-const YELLOW_COL = 8
-const GREEN_COL = 11
-const COLS = [BLUE_COL, RED_COL, YELLOW_COL, GREEN_COL]
-
-//shift check-out times (only needed if WARN_IF_NO_CHECK_OUT is true)
-const CHECKOUT_1 = 13
-const CHECKOUT_2 = 18
-const CHECKOUT_3 = 23
-const CHECKOUT_TIMES = [CHECKOUT_1, CHECKOUT_2, CHECKOUT_3]
-
+// Main Commands
 const CHECK_IN_COMMAND = "/check-in"
 const CHECK_OUT_COMMAND = "/check-out"
 const SHEET_NAME = "Event Log"
@@ -31,11 +14,99 @@ const CHECK_IN_ACTION = "Check In"
 const CHECK_OUT_ACTION = "Check Out"
 const NO_CHECK_OUT_ACTION = "No Checkout"
 const ROW_OFFSET = 2
+const LAB_TOTAL = 10  //Edit number of people in lab (or that you want to keep track of)
+const LAB_LIMIT = 4   //Edit number to max allowed people in lab at one time
 
+
+// Personnel variables
+const PERSON01 = "name_01"//Must edit these with the names exactly has they appear on the google sheet
+const PERSON02 = "name_02"
+const PERSON03 = "name_03"
+const PERSON04 = "name_04"
+const PERSON05 = "name_05"
+const PERSON06 = "name_06"
+const PERSON07 = "name_07"
+const PERSON08 = "name_08"
+const PERSON09 = "name_09"
+const PERSON10 = "name_10"
+const NAME_ERR = "Error: Name must be name_01, name_02, name_03, name_04, name_05, name_06, name_07, name_08, name_09 or name_10"
+
+
+
+function liveCount(numIN) {
+  //Count the number of researchers currently in lab  
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_NAME);
+  var sheet_curr_day = ss.getSheetByName(SHEET_CURR_DAY);  
+  var numIN = 0;
+  var rowMin = 1 + ROW_OFFSET
+  var rowMax = LAB_TOTAL + ROW_OFFSET  
+  var i;
+  for(i = rowMin; i<= rowMax;i++) {
+    var inCount = sheet_curr_day.getRange(i, 2).getValue();
+    //Logger.log('inCount = %s',inCount)
+    if (inCount == "In") {
+      numIN += 1      
+    }
+  }
+  Logger.log('Just finished counting %d',numIN)
+  return numIN
+}
+
+function receiveCount(numIN) {
+  var numIN;
+  numIN = liveCount([numIN]); //Call liveCount to obtain current numIN
+  Logger.log ('Num in Lab = %d', numIN);  
+}
+
+
+
+function noCheckOut() {
+  //Assumes a single shift and that all researchers will depart 3 AM EST
+  //This script is executed by a trigger function at 3 AM EST
+  var numIN = 0;
+  var msg = "";
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_NAME);
+  var sheet_curr_day = ss.getSheetByName(SHEET_CURR_DAY);
+  var lastRow = sheet.getLastRow()
+  if (WARN_IF_NO_CHECK_OUT) {   
+    var rowMin = 1 + ROW_OFFSET
+    var rowMax = LAB_TOTAL + ROW_OFFSET  
+    var i
+    for( i = rowMin; i<= rowMax;i++ ) {
+      if ( sheet_curr_day.getRange(i, 4, 1, 1).isBlank() && !sheet_curr_day.getRange(i, 3, 1, 1).isBlank() ) {
+        //Do an automatic check-out
+        sheet_curr_day.getRange(i, 2, 1, 1).setValue("Out")
+        numIN = liveCount([numIN]); //Call liveCount to obtain current numIN       
+        var day = new Date().toDateString()
+        var checkOutTime = Utilities.formatDate(new Date(), "GMT-4", "h:mm:ss a");//New York time zone
+        var action = "No Checkout"
+        var name = sheet_curr_day.getRange(i, 1, 1, 1).getValue()
+        var details = ['', action, name,]
+                       if (SEND_TO_SLACK) {
+                       //Send to Slack
+                       sendToSlack(details)
+                       }
+        msg = "Automatic check-out";
+        var checkOutDetailsCondensed = [checkOutTime, msg]
+        sheet_curr_day.getRange(i, 4, 1, 2).setValues([checkOutDetailsCondensed])
+        
+        //Put automatic checkOut information on Event Log
+        var checkOutDetails = [day, action, name, checkOutTime, numIN, msg]
+        sheet.getRange(lastRow + 1, 1, 1, 6).setValues([checkOutDetails])
+        sheet_curr_day.getRange(1, 2).setValue(numIN)
+      }
+    }                                        
+  }                 
+}                  
+
+                      
 function doPost(e) {
   if (typeof e !== 'undefined') {
     switch (e.parameter.command) {
       case CHECK_IN_COMMAND:
+        Logger.log('Just about to call the handleCheckIn');
         return handleCheckIn(e);
       case CHECK_OUT_COMMAND:
         return handleCheckOut(e);
@@ -45,263 +116,274 @@ function doPost(e) {
   }
 }
 
-function noCheckOut() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(SHEET_NAME);
-  var sheet_curr_day = ss.getSheetByName(SHEET_CURR_DAY);
-  var lastRow = sheet.getLastRow()
-  if (WARN_IF_NO_CHECK_OUT) {
-    var checkOutHour = new Date().toTimeString().split(' ')[0].split(':')[0]
-    var i;
-    for (i = 0; i < CHECKOUT_TIMES.length - 1; i++) {
-      if (checkOutHour >= CHECKOUT_TIMES[i] && checkOutHour < CHECKOUT_TIMES[i + 1]) {
-        var row = i + 1 + ROW_OFFSET
-        break
-      } else {
-        var row = CHECKOUT_TIMES.length + ROW_OFFSET
-      }
-    }
-    //check all cells of that row
-    for (i in COLS) {
-      var col = COLS[i]
-      if (sheet_curr_day.getRange(row, col + 2, 1, 1).isBlank() && !sheet_curr_day.getRange(row, col + 1, 1, 1).isBlank()) {
-        var action = "No Checkout"
-        var name = sheet_curr_day.getRange(row, col, 1, 1).getValue()
-        var time = sheet_curr_day.getRange(row, col + 1, 1, 1).getValue()
-        var shift = row - ROW_OFFSET
-        var details = ['', action, name, stations[i], shift]
-        sendToSlack(details)
-      }
-    }
-  }
-}
-
+     
 function autoClear(a) {
   // set up spreadsheet
   var col = 2
   var row_old = 3
-  var row_new = row_old + 7
+  var row_new = row_old + LAB_TOTAL + 3
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(SHEET_NAME);
   var sheet_curr_day = ss.getSheetByName(SHEET_CURR_DAY);
   var lastRow = sheet.getLastRow()
-
+  
   // copy previous day down
-  var row_num = stations.length * 3
-  var old_range = sheet_curr_day.getRange(row_old, col, NUM_SHIFTS, row_num)
-  var new_range = sheet_curr_day.getRange(row_new, col, NUM_SHIFTS, row_num)
-  old_range.moveTo(new_range)
-
-  //update dates
+  var row_num = LAB_TOTAL
+  var old_range = sheet_curr_day.getRange(row_old, col, LAB_TOTAL, 5)
+  var new_range = sheet_curr_day.getRange(row_new, col, LAB_TOTAL, 5)
+  old_range.copyTo(new_range)
+  
+  // clear previous day
+  col = 3
+  var old_range = sheet_curr_day.getRange(row_old, col, LAB_TOTAL, 3).setValue(["",""]);
+  
+  // update dates
   var old_date = sheet_curr_day.getRange(1, 1, 1, 1).getValue()
-  sheet_curr_day.getRange(8, 1, 1, 1).setValue(old_date)
+  sheet_curr_day.getRange(14, 1, 1, 1).setValue(old_date)
   var new_date = new Date().toDateString()
   sheet_curr_day.getRange(1, 1, 1, 1).setValue(new_date)
-
-
 }
 
 
-function handleCheckIn(e) {
+function handleCheckIn(e) { 
   // set up spreadsheet
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(SHEET_NAME);
   var sheet_curr_day = ss.getSheetByName(SHEET_CURR_DAY);
-  var lastRow = sheet.getLastRow()
-  var action = CHECK_IN_ACTION
-
-  // extract data from slack request
+  var lastRow = sheet.getLastRow();
+  var action = CHECK_IN_ACTION;
+  var numIN = 0;
+  
+  //extract data from slack request
   var parameter = e.parameter;
-  var args = parameter.text.split(" ");
-  if (args.length != 3) {
-    return ContentService.createTextOutput('/check-in expects 3 arguments: [Name] [Station] [Shift Number]');
-  }
-  [name, station, shift] = extractArgs(args)
-
-  errorMsg = validateArgs(name, station, shift)
-  if (errorMsg) {
-    return errorMsg
-  }
-
-  column = getStationColumn(station.toLowerCase())
-  if (!column) {
-    return ContentService.createTextOutput('Something is wrong with your station');
-  }
-
-  var row = shift + ROW_OFFSET
-
-  var in_name = sheet_curr_day.getRange(row, column, 1, 1).getValue()
-  var return_text = ''
+  var name = parameter.text;
+  
+  //Validate person and determine which row corresponds to the person checking in
+  //Also sends a personalized message to lab members depending on their personal circumstances.
+  //See some examples below for PERSON03, PERSON09, PERSON10
+  var currentRow
+  switch (name) {
+    case PERSON01:
+      currentRow = 3;
+      break;
+    case PERSON02:
+      currentRow = 4;
+      break;
+    case PERSON03:
+      currentRow = 5;
+      var msg = "Wait: You are supposed to be writing your thesis! Back to the :books: for you!\n:female-scientist: Exiting without checking you in.'"
+      return ContentService.createTextOutput(msg);
+      break;
+    case PERSON04:
+      currentRow = 6;
+      break;
+    case PERSON05:
+      currentRow = 7;
+      break;
+    case PERSON06:
+      currentRow = 8;
+      break;
+    case PERSON07:
+      currentRow = 9;
+      break;
+    case PERSON08:
+      currentRow = 10;
+      break;
+    case PERSON09:
+      currentRow = 11;
+      var msg = "We :heart: our WonderGrads and can't wait until they are allowed back in the lab:!\n:female-scientist: Exiting without checking you in.'"
+      return ContentService.createTextOutput(msg);
+      break;
+    case PERSON10:
+      currentRow = 12;
+      var msg = "Hey: You are supposed to be writing code, creating a special :snowflake: or riding your :bike:!\n:female-scientist: Exiting without checking you in.'"
+      return ContentService.createTextOutput(msg);
+      break;
+    default:
+      return ContentService.createTextOutput([NAME_ERR]);
+      break;
+  } 
+  
+  //Determine if person is already checked in so they are not counted twice
+  var currentStatus = sheet_curr_day.getRange(currentRow,2).getValue();
+  if ( currentStatus == "In" ) {
+    if ( !sheet_curr_day.getRange(currentRow, 3, 1, 1).isBlank()  ) { 
+      var msg = "You are already checked in.\n':female-scientist: Hope you are having a great day in Lab! :tada:';"
+      return ContentService.createTextOutput(msg);
+    } else {
+      var msg = "You are already checked in but your time is missing. Updating your time....\n':female-scientist: Hope you are having a great day in Lab! :tada:';"
+      var checkInTime = Utilities.formatDate(new Date(), "GMT-4", "hh:mm:ss a");//New York time zone
+      sheet_curr_day.getRange(currentRow, 3, 1, 1).setValue([checkInTime]);
+      return ContentService.createTextOutput(msg);
+    };
+  };
+  
+  //Count the number of researchers currently in lab
+  numIN = liveCount([numIN]); //Call liveCount to obtain current numIN         
+  //Determine if check-in would exceed maximum number allowed
   var update_override = true
-  if ( name.toLowerCase() != in_name.toLowerCase() && in_name != '') {
+  if (numIN >= LAB_LIMIT ) {
     switch(OVERRIDE_OPT){
-      case 'ALLOW':
-        return_text =':female-scientist: Have a great day in Lab! :tada:';
-        break;
       case 'WARN':
-        return_text = `You overrode ${in_name}\'s check in to this station. Please check the schedule and make sure this is correct`;
+        // Still allows check-in for a temporary, brief period of time and sends a warning. 
         break;
       case 'FORBID':
-        return_text = `You cannot check into this station because ${in_name} is checked in.`;
+        return_text = `You cannot check into lab at this time because the lab limit of ${LAB_LIMIT} has been reached.`;
         update_override = false
-        break
+        return ContentService.createTextOutput(return_text);
+        break;
       default:
         return_text ='default text';
         break
     }
-  } else {
-    return_text =':female-scientist: Have a great day in Lab! :tada:'
   }
-
-  var checkInTime = new Date().toTimeString().split(' ')[0];
-  var date = new Date().toDateString()
-  var checkInDetails = [date, action, name, station, shift, checkInTime]
-  var checkInDetailsCondensed = [name, checkInTime]
-
-  column = getStationColumn(station)
-  if (!column) {
-    return ContentService.createTextOutput('Something is wrong with your station');
-  }
-
+  
+  //Execute the check-in and post to google sheet 
   if (update_override) {
-    sheet.getRange(lastRow + 1, 1, 1, 6).setValues([checkInDetails])
-    sheet_curr_day.getRange(row, column, 1, 2).setValues([checkInDetailsCondensed])
+    var checkInTime = Utilities.formatDate(new Date(), "GMT-4", "hh:mm:ss a");//New York time zone
+    var date = new Date().toDateString()
+    
+    numIN +=1 
+    sheet_curr_day.getRange(1, 2).setValue(numIN)  
+    var checkInDetails = [date, action, name, checkInTime,numIN]
+    var checkInDetailsCondensed = ["In", checkInTime]
+    
+    sheet.getRange(lastRow + 1,1, 1, 5).setValues([checkInDetails])
+    sheet_curr_day.getRange(currentRow, 2, 1, 2).setValues([checkInDetailsCondensed])
+    //Send to Slack
     if (SEND_TO_SLACK) {
       sendToSlack(checkInDetails)
     }
+  } 
+  if ( numIN <= LAB_LIMIT ) {
+    return_text =':female-scientist: Have a great day in Lab! :tada:'
+    return ContentService.createTextOutput(return_text);
+  } else {
+    return_text ='WARNING: Your entry would exceed the maximum number of ' + LAB_LIMIT + ' researchers allowed.\n If you absolutely must enter, make it brief.\n:female-scientist: Have a great day in Lab! :tada:'
+    return ContentService.createTextOutput(return_text);
   }
-  return ContentService.createTextOutput(return_text);
 }
+
 
 function handleCheckOut(e) {
   // set up spreadsheet
+  var numIN = 0;
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(SHEET_NAME);
   var sheet_curr_day = ss.getSheetByName(SHEET_CURR_DAY);
   var lastRow = sheet.getLastRow()
-  var action =  CHECK_OUT_ACTION
-
-  // extract data from slack request
+  var action = CHECK_OUT_ACTION  
+  //Extract name from slack
   var parameter = e.parameter;
-  var args = parameter.text.split(" ");
-  if (args.length != 3) {
-    return ContentService.createTextOutput('/check-out expects 3 arguments: [Name] [Station] [Shift Number]');
+  var name = parameter.text;  
+  //Validate person and determine which row corresponds to the person checking in
+  var currentRow
+  switch (name) {
+    case PERSON01:
+      currentRow = 3;
+      break;
+    case PERSON02:
+      currentRow = 4;
+      break;
+    case PERSON03:
+      currentRow = 5;
+      break;
+    case PERSON04:
+      currentRow = 6;
+      break;
+    case PERSON05:
+      currentRow = 7;
+      break;
+    case PERSON06:
+      currentRow = 8;
+      break;
+    case PERSON07:
+      currentRow = 9;
+      break;
+    case PERSON08:
+      currentRow = 10;
+      break;
+    case PERSON09:
+      currentRow = 11;
+      break;
+    case PERSON10:
+      currentRow = 12;
+      break;     
+    default:
+      return ContentService.createTextOutput([NAME_ERR]);
+      break;
   }
-  [name, station, shift] = extractArgs(args)
-
-  errorMsg = validateArgs(name, station, shift)
-  if (errorMsg) {
-    return errorMsg
-  }
-
-  column = getStationColumn(station)
-  if (!column) {
-    return ContentService.createTextOutput('Something is wrong with your station');
-  }
-
-  var row = shift + ROW_OFFSET
-
-  //Alert User if their name does not match the name they are trying to check-out
-  var in_name = sheet_curr_day.getRange(row, column, 1, 1).getValue()
-  if (in_name == '') {
-    in_name = 'no one'
-  }
-  if ( name.toLowerCase() != in_name.toLowerCase() ) {
-    var errmsg = `You cannot check out of this station because ${in_name} is currently checked in. Double check your name spelling, station and shift number`;
-    return ContentService.createTextOutput(errmsg);
-  }
-
-
-  // Write to the History sheet and Current Day Sheet
-  var checkOutTime = new Date().toTimeString().split(' ')[0];
+  
+  //Determine if person has already checked out
+  var currentStatus = sheet_curr_day.getRange(currentRow,2,1,1).getValue();
+  Logger.log('Karen current status is %s',currentStatus);
+  if ( currentStatus == "Out" ) {
+    var msg = "\n:boom: You are already checked out!:boom:\n :female-scientist:You have to check-in before you can check-out\n"
+    return ContentService.createTextOutput(msg);
+  }  
+  //Write to the Event Log and Current Day Sheet
+  var checkOutTime = Utilities.formatDate(new Date(), "GMT-4", "h:mm:ss a");//New York time zone
   var day = new Date().toDateString()
-
-  var checkOutDetails = [day, action, name, station, shift, checkOutTime]
   var checkOutDetailsCondensed = [checkOutTime]
-
-  sheet.getRange(lastRow + 1, 1, 1, 6).setValues([checkOutDetails])
-  sheet_curr_day.getRange(row, column + 2, 1, 1).setValues([checkOutDetailsCondensed])
-
+  sheet_curr_day.getRange(currentRow, 2, 1, 1).setValue("Out")
+  sheet_curr_day.getRange(currentRow, 4, 1, 1).setValues([checkOutDetailsCondensed])  
+  //Count the number of researchers in lab
+  numIN = liveCount([numIN]); //Call liveCount to obtain current numIN       
+  var checkOutDetails = [day, action, name, checkOutTime, numIN]
+  sheet.getRange(lastRow + 1, 1, 1, 5).setValues([checkOutDetails])
+  sheet_curr_day.getRange(1, 2).setValue(numIN)
+  //Send to Slack
   if (SEND_TO_SLACK) {
     sendToSlack(checkOutDetails)
   }
-
-  return ContentService.createTextOutput(':wave: See you next time! :tada:');
+  return ContentService.createTextOutput('\n:wave: See you next time! :tada:\n'); 
 }
 
 
-function getStationColumn(station) {
-  var i;
-  for (i = 0; i < stations.length; i++) {
-    if (station.toLowerCase() == stations[i]) {
-      return COLS[i]
-    }
-  }
-  return null
-}
-
-function extractArgs(args) {
-  var name = args[0]
-  var station = args[1]
-  var shift = parseInt(args[2])
-
-  return [name, station, shift]
-}
-
-function validateArgs(name, station, shift) {
-  // Alert user if station is not in the list of stations
-  if (!stations.includes(station.toLowerCase())) {
-    return ContentService.createTextOutput('Station must be one of: \n' + stations.join(' '));
-  }
-
-  // Alert user if shift is not valid
-  if (shift > NUM_SHIFTS || shift < 1) {
-    var msg = "Shift must be between 1 and " + NUM_SHIFTS
-    return ContentService.createTextOutput(msg);
-  }
-  return null
-}
-
-// function to send message to Slack
-// checkOutDetails = [day, action, name, station, shift, checkOutTime]
+// Function to send message to Slack
 function sendToSlack(details) {
   var timestamp = new Date();
-
-  if ( details[1] == CHECK_IN_ACTION ) {
+  
+  if ( details[1] == CHECK_IN_ACTION && details[4] <= LAB_LIMIT ) {
     var payload = {
-    "channel": CHECK_IN_CHANNEL,
-    "username": "Check-In Bot",
-    "text": details[2] + " has checked in to " + details[3] + " for shift number " + details[4]
+      "channel": CHECK_IN_CHANNEL,
+      "username": "Check-In Bot",
+      "text": details[2] + " has checked in to lab.\n There are now " + details[4] + " total researchers in lab"
+    };
+  } else if ( details[1] == CHECK_IN_ACTION && details[4] > LAB_LIMIT ) {
+    var payload = {
+      "channel": CHECK_IN_CHANNEL,
+      "username": "Check-In Bot",
+      "text": details[2] + " has checked into lab.\n WARNING: There are now " + details[4] + " total researchers in lab.\n This exceeds our max allowed of " + LAB_LIMIT + " so make your visit brief."
     };
   } else if ( details[1] == CHECK_OUT_ACTION ) {
     var payload = {
-    "channel": CHECK_IN_CHANNEL,
-    "username": "Check-In Bot",
-    "text": details[2] + " has checked out of " + details[3] + " for shift number " + details[4]
+      "channel": CHECK_IN_CHANNEL,
+      "username": "Check-In Bot",
+      "text": details[2] + " has checked out of lab.\n There are now " + details[4] + " total researchers in lab"
     };
-   } else if ( details[1] == NO_CHECK_OUT_ACTION ) {
+    
+  } else if ( details[1] == NO_CHECK_OUT_ACTION ) {
     var payload = {
-    "channel": CHECK_IN_CHANNEL,
-    "username": "Check-In Bot",
-      "text": ":bangbang: WARNING :bangbang: " + details[2] + " has NOT checked out of station " + details[3] + " for shift number " + details[4] + ", make sure they are okay."
+      "channel": CHECK_IN_CHANNEL,
+      "username": "Check-In Bot",
+      "text": ":bangbang: WARNING :bangbang: " + details[2] + " has NOT checked out of lab, make sure they are okay."
     };
   } else {
     var payload = {
-    "channel": CHECK_IN_CHANNEL,
-    "username": "Check-In Bot",
-    "text": "Please contact Sophie if you see this. What is in the details: " + details
+      "channel": CHECK_IN_CHANNEL,
+      "username": "Check-In Bot",
+      "text": "Please contact Karen if you see this. What is in the details: " + details
     };
   }
-
   var options = {
     "method": "post",
     "contentType": "application/json",
     "payload": JSON.stringify(payload)
   };
-
+  
   return UrlFetchApp.fetch(url,options);
 }
 
-
-
-// This script was created by Sophie Shoemaker Updated: 06/20/2020
+// This script was originally created by Sophie Shoemaker Updated: 06/20/2020
+// and was edited to change some functionality by Karen Fleming: 08/31/2020

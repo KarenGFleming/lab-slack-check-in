@@ -13,7 +13,7 @@ This script provides two main functions:
 1. The script is currently configured to accommodate labs containing up to 10 researchers. It is easily customizable to have more or less people.
 
 #### Script Options
-The script  has optional functionality that sends messages to a slack channel every time someone checks in and checks out or if someone does not check-out of their shift. This can provide real-time updates to groups who have safety concerns of people working late at night or want to make sure everyone makes it through their shift safely. <br />![Warnings](./README_images/SlackWarnings.png)<br /> 
+The script  has optional functionality that sends messages to a slack channel every time someone checks in and checks out or if someone does not check-out of their shift. This can provide real-time updates to groups who have safety concerns of people working late at night or want to make sure everyone makes it through their shift safely. <br />![Warnings](./README_images/SlackWarnings_Tot.png)<br /> 
 
 This guide and the scripts were mainly developed by Sophie Shoemaker. I copied her code and her README and edited for my purposes. For any problems, please create a [github issue](https://github.com/sophieshoemaker/lab-slack-check-in/issues/new). I am happy to help with set-up issues and minor customization issues. However, if you are requesting custom functionality I will likely decline your request out of time constraints. 
 
@@ -47,27 +47,28 @@ If you find that this tool is really useful for your lab and you think that unde
   1. Click “Add features and functionality”
   1. Click “Slash Commands”
   1. Click “Create New Command”
-  1. Fill it out to look like this, pasting in the URL that you copied in step 4 of this part:<br />![Create Slash Command](./README_images/CreateSlashCommand.png)
+  1. Fill it out to look like this, pasting in the URL that you copied in step 4 of this part:<br />![Create Slash Command](./README_images/CreateSlashCommand_Tot.png)
   1. Click Save
   1. Click “Create New Command”
-  1. Fill it out to look like this, pasting in the URL that you copied in step 4 of this part:<br />![Create CheckOut](./README_images/CreateCheckOut.png)
+  1. Fill it out to look like this, pasting in the URL that you copied in step 4 of this part:<br />![Create CheckOut](./README_images/CreateCheckOut_Tot.png)
   1. Click Save
   1. On the left hand side click ‘Basic Information’<br />![BasicInfo](./README_images/BasicInformation.png)
   1. Click on “Install your app to your workspace” (middle of page) and then click on the big green button that says “Install App to Workspace”
   1. You should be taken to a new page requesting permission to access the Slack workspace. Click “Allow”
 #### Step 4: Test your app! 
   1. Go to your slack workspace. From ANY CHANNEL (would recommend either your Slackbot channel or your Direct message to yourself to reduce clutter)
-  1. Put in a test check-in <br />![CheckIn](./README_images/CheckIn.png)<br />  
+  1. Put in a test check-in <br />![CheckIn](./README_images/CheckIn_Tot.png)<br />  
       1. You should see the following message which indicates your check-in was successful.<br />![Success](./README_images/SuccessfulCheckIn.png)<br />  
   	  1. If you don’t see this message, it should give you a helpful error message of why it did not work. If it is a bunch of incomprehensible nonsense, try to read the garbled stuff to find the error message or make a github issue to help troubleshoot. 
   1. Go to the Google Sheet and see if your entry was logged on BOTH the “Current Day” and “Event Log” tabs.
-  	    1. Current Day Sheet: <br />![Current Day](./README_images/CurrentDaySheet.png)        
-        1. Event Log Sheet:<br />![Event Log](./README_images/EventLogSheet.png)      
+  	    1. Current Day Sheet: <br />![Current Day](./README_images/CurrentDaySheet_Tot.png)        
+        1. Event Log Sheet:<br />![Event Log](./README_images/EventLogSheet_Tot.png)      
   1. If you do not see these changes in your sheet, something is wrong. Maybe go back through the steps to make sure you didn’t miss something. Otherwise create a github issue.
   1. Similarly test your /check-out function (same way as above, but with the /check-out command). You should get a check-out message that says “See you next time”
 
 #### Step 5: Set up the middle-of-the-night auto check-out
-  1. Because the script is keeping a live count of the number of researchers in lab, it is problematic if people forget to log out. This script checks for occurences of no check outs and automatically logs people out. I have it set to automatically run at 3 AM, which is what I instruct below. Your needs might be different. If the script finds a check-in with no check-out, it will do two things: (1) it will check out the person; and (2) it will put "automatic check-out" in the "Message" column of the sheet. If slack messages are enabled, it will also send a message to slack.
+  1. Because the script is keeping a live count of the number of researchers in lab, it is problematic if people forget to log out. This script checks for occurences of no check outs and automatically logs people out. I have it set to automatically run at 3 AM before the Step 6 autoclear below. Your needs might be different. If the script finds a check-in with no check-out, it will do two things: (1) it will check out the person; and (2) it will put "automatic check-out" in the "Message" column of the sheet. If slack messages are enabled, it will also send a message to slack.
+  1. Set the const variable WARN_IF_NO_CHECK_OUT at the top of the script to true.
   1. Go back to your Google Sheets App (created in Step 2) 
   1. In the tool bar click the “Current Triggers” button (it looks like a clock speech bubble)<br />![trigger button](./README_images/Triggers.png)
   1. This should take you to the “Triggers” page which currently should be empty. 
@@ -76,7 +77,6 @@ If you find that this tool is really useful for your lab and you think that unde
   1. Click Save
   1. To test this part, I would recommend making some check-ins without check-outs and then tomorrow morning checking the sheet to make sure that the daily entries were moved down to the previous spot. The dates on the sheet should also be updated. 
   
-
 
 #### Step 6: Set up the overnight autoclear
   1. Naturally at the end of the day, we will want to shift down responses on the “Current Day” sheet (so we have a 1 day log of who was where) so we are ready for the next day. I have this script set to run at 4 AM, so that the "no-check-out" script  (Step 5) runs first to clean up the log. 
@@ -101,24 +101,10 @@ Set the const variable at the top of Google Sheets Script called “SEND_TO_SLAC
   1. Test this out by checking someone in or out and see if it is posted to the channel you set up.
       1. REMEMBER: Whenever you make changes to the script you must go back to Publish>Deploy and then fill out the pop-up making sure the Project version is “New” every time. It is good practice to include a descriptive message of what you changed. Make sure everything else is still filled out.<br />![Second Deploy](./README_images/SecondDeploy.png)
 
-#### Step 7: OPTIONAL have Slack notify you if someone does NOT check out of their shift
-  1. This is an optional function that will check after each shift to make sure everyone has checked out and if they have not send a warning message to the same slack channel as in step 6. If you only want step 7 functionality and not step 6, follow the instructions of step 6 except for part 3.
-  1. Set the const variable WARN_IF_NO_CHECK_OUT at the top of the script to true.
-  1. Starting in line 20, you will see const variables that are the times that each shift ends. Change these to be the times that you want to check if each shift has checked out.
-    1. If you add more shifts (instructions to do that is near the end), add additional variables (i.e. const CHECKOUT_4 = 23) and then also add them to the const CHECKOUT_TIMES list. (i.e. const CHECKOUT_TIMES = [CHECKOUT_1, CHECKOUT_2, CHECKOUT_3, CHECKOUT_4]
-  1. Now you need to set triggers for checking similar to what you did in Step 5 with the autoClear.
-      1. First go to triggers
-      1. Click the “+ Add Trigger” button in the bottom right corner.
-      1. Fill out the options to look like this:<br />![no Check out](./README_images/noCheckOutTrigger.png)  
-      1. Change the “Select time of day” to match the hour at which your shift ends
-      1. Repeat b and c for the other times that your shifts end. (i.e. if you have 3 shifts, you will need 3 triggers, one at each shift end time)
-  1. You will need to save the script and publish it as described before.
-  1. You should test this by signing yourself in and not out and then wait to see if the slack message is sent to the channel
       
-
 #### Step 8: OPTIONAL decide how you want to handle it if someone tries to check-in and the lab maximum has already been reached
   1. So what happens if the lab maximum has already been reached and someone tries to check in? At our university, an additional person is allowed to temporarily enter the lab to complete a short (<1 hour) task. You can decide how you want to handle what happens when this occurs. 
-  1. By default the WARN option is initialized. This means that if someone sends a check-in command, it will be allowed and they will receive a warning: “WARNING: There are now " xx total researchers in lab. This exceeds our max allowed of LAB_LIMIT so make your visit brief." If slack is enabled, everyone will receive the notice that this is ahppening and it can be worked out in person. 
+  1. By default the WARN option is initialized. This means that if someone sends a check-in command, it will be allowed and they will receive a warning: “WARNING: There are now xx total researchers in lab. This exceeds our max allowed of LAB_LIMIT so make your visit brief." If slack is enabled, everyone will receive the notice that this is ahppening and it can be worked out in person. 
   1. Another option left of from Sophie's code is ALLOW. We are not currently using that functionality.
   1. The last option is FORBID. This would tell the person trying to check in that “You cannot check into this station because the lab maximum has been reached”. 
   1. Choose an option, if it is ALLOW or FORBID, change the const variable “OVERRIDE_OPT” at the top of the shet. 
